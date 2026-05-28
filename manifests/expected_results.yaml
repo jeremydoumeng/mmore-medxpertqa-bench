@@ -1,0 +1,117 @@
+# Expected accuracy on MedXpertQA-MM (n=2000, full test split) through the
+# PR #281 RAG pipeline ported onto Qdrant. Numbers below are from our
+# canonical runs (see paper). Compare your `results/eval_<JOB>/summary.json`
+# against these; deltas larger than the Wilson 95% CI on n=2000 (~±2pp)
+# indicate something has drifted in the setup.
+#
+# Calibration: PR #281 no-RAG should reproduce Hu et al. (2025, arxiv
+# 2507.11200, Table 1, Qwen2.5-VL-72B, MedXpert column) at 0.2995 ± 0.30pp.
+#
+# Source runs:
+#   - job 2380399 (Clariden, 1 GH200, 5h04m wall) — Qwen2.5-VL-7B
+#   - job 2384325 (Clariden, 4 GH200, 6h56m wall) — Qwen2.5-VL-72B
+
+calibration_anchor:
+  source: "Hu et al. 2025 (arxiv 2507.11200, Table 1)"
+  model: "Qwen2.5-VL-72B-Instruct"
+  benchmark: "MedXpert"
+  prompt: "zero-shot CoT, \\boxed{X} extraction"
+  accuracy: 0.2995
+
+prompt: "zero-shot CoT, \\boxed{X} extraction"
+parser_primary: "boxed"
+n_questions: 2000
+questions_seed: 42
+corpus: "MedPix-2.0 (671 unique cases, 2050 multi-view images)"
+top_k: 3
+max_images_per_prompt: 12
+max_retrieved_images: 20
+max_new_tokens: 1024
+
+runs:
+
+  # Canonical 7B run
+  Qwen2.5-VL-7B-Instruct:
+    tensor_parallel: 1
+    wall_time_hours: 5.07
+    by_condition:
+      no-rag:
+        accuracy:   0.2235
+        wilson_ci:  [0.2058, 0.2423]
+        k_n:        "447/2000"
+        nulls:      1
+      use_vision-off:
+        accuracy:   0.2145
+        wilson_ci:  [0.1971, 0.2330]
+        k_n:        "429/2000"
+        nulls:      3
+        delta_vs_no_rag_pp: -0.90
+        mcnemar_p_holm_2:   0.831
+      use_vision-on:
+        accuracy:   0.2105
+        wilson_ci:  [0.1932, 0.2289]
+        k_n:        "421/2000"
+        nulls:      70  # small-VLM focus-loss with default max_images_per_request=20
+        delta_vs_no_rag_pp: -1.30
+        mcnemar_p_holm_2:   0.728
+
+  # Canonical 72B run
+  Qwen2.5-VL-72B-Instruct:
+    tensor_parallel: 4
+    wall_time_hours: 6.93
+    by_condition:
+      no-rag:
+        accuracy:   0.3010
+        wilson_ci:  [0.2813, 0.3215]
+        k_n:        "602/2000"
+        nulls:      2
+        delta_vs_hu_et_al_pp: +0.15  # within sampling variance
+      use_vision-off:
+        accuracy:   0.2855
+        wilson_ci:  [0.2661, 0.3057]
+        k_n:        "571/2000"
+        nulls:      1
+        delta_vs_no_rag_pp: -1.55
+        mcnemar_p_holm_2:   0.325
+      use_vision-on:
+        accuracy:   0.2905
+        wilson_ci:  [0.2710, 0.3108]
+        k_n:        "581/2000"
+        nulls:      0
+        delta_vs_no_rag_pp: -1.05
+        mcnemar_p_holm_2:   0.588
+
+# Gold-coverage subset (10.2% of questions whose correct-option text appears
+# in any MedPix case title or case_diagnosis). Re-scored from the same
+# results.jsonl above via audit/gold_coverage.py. Provides a within-corpus-
+# coverage lift estimate.
+gold_coverage_subset:
+  size: 203
+  coverage_pct: 0.102
+  match_strategies:
+    strict_substring: 163
+    fuzzy_token_set_ge_90: 40
+    non_matchable_gold_filtered: 117
+
+  Qwen2.5-VL-72B-Instruct:
+    no-rag:          {accuracy: 0.2709, k_n: "55/203",  wilson_ci: [0.215, 0.336]}
+    use_vision-off:  {accuracy: 0.3399, k_n: "69/203",  wilson_ci: [0.278, 0.408],
+                      delta_pp: +6.90, mcnemar_p_raw: 0.040, mcnemar_p_holm_2: 0.080}
+    use_vision-on:   {accuracy: 0.3202, k_n: "65/203",  wilson_ci: [0.260, 0.387],
+                      delta_pp: +4.93, mcnemar_p_raw: 0.155, mcnemar_p_holm_2: 0.155}
+
+  Qwen2.5-VL-7B-Instruct:
+    no-rag:          {accuracy: 0.1970, k_n: "40/203",  wilson_ci: [0.148, 0.257]}
+    use_vision-off:  {accuracy: 0.2562, k_n: "52/203",  wilson_ci: [0.201, 0.320],
+                      delta_pp: +5.91, mcnemar_p_raw: 0.120, mcnemar_p_holm_2: 0.147}
+    use_vision-on:   {accuracy: 0.2611, k_n: "53/203",  wilson_ci: [0.206, 0.326],
+                      delta_pp: +6.40, mcnemar_p_raw: 0.074, mcnemar_p_holm_2: 0.147}
+
+# Tolerances: a reproduction is "good" if every no-RAG accuracy lands
+# within the Wilson CI of the manifest value (so ±1-2pp at n=2000), and
+# every RAG-vs-no-RAG delta sign agrees with the manifest. The individual
+# p-values are illustrative — they vary slightly across runs from sampling
+# noise even with deterministic temperature.
+tolerances:
+  abs_accuracy_pp: 2.0    # any single condition's accuracy
+  delta_sign:      true   # signs of all RAG-vs-no-RAG deltas should match

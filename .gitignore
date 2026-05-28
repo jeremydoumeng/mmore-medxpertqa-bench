@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# venvs
+.venv/
+venv/
+
+# Eval outputs (regenerable from running the pipeline)
+results/
+
+# Slurm artifacts
+logs/
+core.*
+
+# Local caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Editor noise
+.vscode/
+.idea/
+.DS_Store
+
+# Data materialised under scratch — not redistributed
+data/medxpertqa_mm_*.jsonl
+data/medxpertqa_text_*.jsonl
+
+# Qdrant binary build tree (built by the user, not vendored)
+qdrant-src/
